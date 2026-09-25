@@ -3,3 +3,5 @@
 # The filesystem mirror and CLI configuration from `make mirror`.
 /.mirror/
 /dev.tfrc
+# The test binary, image context and kubeconfig from `make testincluster`.
+/.incluster/

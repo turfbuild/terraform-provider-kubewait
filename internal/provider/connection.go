@@ -15,11 +15,13 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-// ErrNoCluster is returned when nothing names a cluster. The kubernetes
-// provider warns and carries on against an empty rest.Config (localhost);
-// a wait must not, since a drain against the wrong cluster passes.
-var ErrNoCluster = errors.New("no cluster is configured: set host (with credentials), config_path or config_paths, " +
-	"or the matching KUBE_* environment variables. kubewait never falls back to localhost, ~/.kube/config or in-cluster credentials")
+// ErrNoCluster is returned when nothing names a cluster and there are no
+// in-cluster credentials. The kubernetes provider warns and carries on
+// against an empty rest.Config (localhost); a wait must not. A refused
+// connection is retried until timeout, and anything else on localhost that
+// answers discovery with 404 reads as "kind not served", so a drain passes.
+var ErrNoCluster = errors.New("no cluster is configured and no in-cluster credentials were found: set host (with credentials), " +
+	"config_path or config_paths, or the matching KUBE_* environment variables. kubewait never falls back to localhost")
 
 // Settings are the provider's connection attributes with environment
 // defaults applied. Empty means unset, as in the kubernetes provider.
@@ -98,9 +100,10 @@ func insecureFromEnv(getenv func(string) string) (bool, error) {
 
 // RESTConfig resolves the settings the way the kubernetes provider's
 // initializeConfiguration does: kubeconfig files only when named, the
-// context overrides only with them, and explicit attributes over both.
-// Unlike it, an empty configuration is an error (ErrNoCluster), and there
-// is no in-cluster fallback.
+// context overrides only with them, explicit attributes over both, and
+// in-cluster credentials when all of that is empty and the process runs in
+// a pod. Unlike it, an empty configuration outside a pod is an error
+// (ErrNoCluster), not localhost.
 func (s *Settings) RESTConfig(userAgent string) (*rest.Config, error) {
 	overrides := &clientcmd.ConfigOverrides{}
 	loader := &clientcmd.ClientConfigLoadingRules{}
@@ -161,17 +164,10 @@ func (s *Settings) RESTConfig(userAgent string) (*rest.Config, error) {
 	}
 	overrides.ClusterDefaults.ProxyURL = s.ProxyURL
 
-	if len(s.ConfigPaths) == 0 && overrides.ClusterInfo.Server == "" {
-		return nil, ErrNoCluster
-	}
-
-	// Load the named files, then resolve without the deferred loader's
-	// in-cluster fallback.
-	raw, err := loader.Load()
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := clientcmd.NewNonInteractiveClientConfig(*raw, overrides.CurrentContext, overrides, loader).ClientConfig()
+	// The kubernetes provider's call: an empty result falls back to
+	// in-cluster credentials when they exist, with host, token and CA file
+	// overrides applied over them.
+	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, overrides).ClientConfig()
 	if err != nil {
 		if clientcmd.IsEmptyConfig(err) {
 			return nil, ErrNoCluster

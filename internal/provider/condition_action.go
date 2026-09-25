@@ -148,6 +148,8 @@ func (a *conditionAction) Invoke(ctx context.Context, req action.InvokeRequest, 
 		resp.Diagnostics.AddError("kubewait_condition has no cluster to observe", err.Error())
 		return
 	}
+	// Names the cluster even when it came from in-cluster credentials.
+	tflog.Debug(ctx, "kubewait_condition connection", map[string]any{"host": cfg.Host})
 	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		resp.Diagnostics.AddError("kubewait_condition cannot build a client", err.Error())

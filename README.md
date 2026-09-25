@@ -63,9 +63,13 @@ variables, resolved the same way:
 - `token`, `proxy_url`;
 - `exec {}`.
 
-A `provider "kubernetes"` block's connection settings copy over verbatim. One
-difference: with nothing configured, a wait fails. It never falls back to
-localhost, `~/.kube/config` or in-cluster credentials.
+A `provider "kubernetes"` block's connection settings copy over verbatim. With
+nothing configured, a wait uses in-cluster credentials when it runs in a pod, as
+that provider does, and otherwise fails. It never falls back to localhost.
+
+From a pod, an empty configuration observes the pod's own cluster. A drain of a
+kind or namespace that cluster lacks passes at once, so configure destroy-event
+drains explicitly.
 
 ## Semantics in brief
 
@@ -119,11 +123,12 @@ Further behaviour:
 ## Building and testing
 
 ```sh
-make build     # ./terraform-provider-kubewait
-make test      # unit tests; the suites below skip without their environment
-make testint   # envtest (downloads kube-apiserver and etcd 1.37.0 on first use)
-make testacc   # Terraform acceptance: TF_ACC=1, the terraform on PATH (>= 1.16.0), envtest
-make mirror    # installs 0.1.0 into .mirror/ and writes dev.tfrc
+make build         # ./terraform-provider-kubewait
+make test          # unit tests; the suites below skip without their environment
+make testint       # envtest (downloads kube-apiserver and etcd 1.37.0 on first use)
+make testacc       # Terraform acceptance: TF_ACC=1, the terraform on PATH (>= 1.16.0), envtest
+make testincluster # in a pod on a throwaway kind cluster (docker, kind)
+make mirror        # installs 0.1.0 into .mirror/ and writes dev.tfrc
 ```
 
 The version check skips silently when Terraform is too old. An acceptance run
@@ -134,11 +139,12 @@ To use a local build from a configuration:
 ```sh
 make mirror
 export TF_CLI_CONFIG_FILE=$PWD/dev.tfrc
-cd /path/to/configuration && terraform init -upgrade
+cd /path/to/configuration && terraform init
 ```
 
-Run `init -upgrade` after every `make mirror`: a rebuilt version has a new
-checksum.
+A rebuilt 0.1.0 has a new checksum, and `init` rejects it even with
+`-upgrade`. After each rebuild, run the `terraform providers lock` command
+that `make mirror` prints in the configuration, then `init` again.
 
 ## License
 

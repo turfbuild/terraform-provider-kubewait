@@ -37,11 +37,18 @@ testacc:
 	TF_ACC=1 TF_ACC_TERRAFORM_PATH="$$(command -v terraform)" KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" \
 		go test ./internal/acceptance/ -v -count=1 -timeout 30m $(TESTARGS)
 
+# TestInvokeInCluster in a pod on a throwaway kind cluster: an empty provider
+# configuration falls back to the pod's service account. Needs docker and kind.
+.PHONY: testincluster
+testincluster:
+	./hack/testincluster.sh
+
 # Installs the provider into an unpacked filesystem mirror and writes a CLI
 # configuration that serves turfbuild/kubewait from it. Use it with
-#   TF_CLI_CONFIG_FILE=$(CURDIR)/dev.tfrc terraform init -upgrade
-# Rebuilding the same version changes its checksum: run init -upgrade after
-# every `make mirror`.
+#   TF_CLI_CONFIG_FILE=$(CURDIR)/dev.tfrc terraform init
+# Rebuilding the same version changes its checksum, and init rejects it even
+# with -upgrade. The command printed last records the new checksum in a
+# configuration's lock file.
 .PHONY: mirror
 mirror:
 	mkdir -p "$(PLUGIN_DIR)"
@@ -57,6 +64,8 @@ mirror:
 		'  }' \
 		'}' > dev.tfrc
 	@echo "wrote dev.tfrc; export TF_CLI_CONFIG_FILE=$(CURDIR)/dev.tfrc"
+	@echo "after a rebuild, in each configuration that uses it:"
+	@echo "  terraform providers lock -fs-mirror=$(MIRROR) -platform=$(OS_ARCH) registry.terraform.io/turfbuild/kubewait"
 
 .PHONY: fmt
 fmt:

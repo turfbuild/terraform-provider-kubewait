@@ -68,8 +68,9 @@ func (p *kubewaitProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 	}
 	resp.Schema = schema.Schema{
 		Description: "Waits on Kubernetes object state. The connection attributes are the kubernetes provider's, " +
-			"so a provider \"kubernetes\" block's connection settings copy over verbatim. Unlike that provider, " +
-			"kubewait never falls back to localhost or in-cluster credentials: with nothing configured, a wait fails.",
+			"so a provider \"kubernetes\" block's connection settings copy over verbatim. With nothing configured, " +
+			"a wait uses in-cluster credentials when it runs in a pod, as that provider does, and otherwise fails. " +
+			"It never falls back to localhost.",
 		Attributes: map[string]schema.Attribute{
 			"host":     str("The hostname (in form of URI) of the Kubernetes API server. Can be set with KUBE_HOST.", false),
 			"username": str("The username for HTTP basic authentication. Can be set with KUBE_USER.", false),

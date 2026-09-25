@@ -134,7 +134,9 @@ func TestRESTConfigExec(t *testing.T) {
 }
 
 func TestRESTConfigNoCluster(t *testing.T) {
-	// Nothing configured: an error, never localhost or ~/.kube/config.
+	// Nothing configured, outside a pod: an error, never localhost,
+	// KUBECONFIG or ~/.kube/config.
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
 	t.Setenv("KUBECONFIG", writeFile(t, "k.yaml", kubeconfigA))
 	for _, s := range []*Settings{{}, {Token: "t"}, {ConfigContext: "a"}} {
 		if _, err := s.RESTConfig(""); !errors.Is(err, ErrNoCluster) {
@@ -149,6 +151,20 @@ func TestRESTConfigNoCluster(t *testing.T) {
 	// An unresolved (unknown at Configure) connection.
 	if _, err := (&Connection{}).RESTConfig(); err == nil || !strings.Contains(err.Error(), "not known") {
 		t.Errorf("unresolved: err = %v", err)
+	}
+}
+
+func TestRESTConfigInClusterNeedsToken(t *testing.T) {
+	// The service environment alone is not in-cluster credentials: the
+	// fallback also needs the mounted token (TestInvokeInCluster covers a
+	// real pod).
+	if _, err := os.Stat(inClusterToken); err == nil {
+		t.Skipf("%s exists", inClusterToken)
+	}
+	t.Setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "443")
+	if _, err := (&Settings{}).RESTConfig(""); !errors.Is(err, ErrNoCluster) {
+		t.Errorf("err = %v", err)
 	}
 }
 

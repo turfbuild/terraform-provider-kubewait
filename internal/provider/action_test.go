@@ -17,6 +17,8 @@ func noEnv(t *testing.T) {
 	old := getenv
 	getenv = func(string) string { return "" }
 	t.Cleanup(func() { getenv = old })
+	// client-go reads this one itself, for the in-cluster fallback.
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
 }
 
 func objectValue(t *testing.T, typ tftypes.Object, vals map[string]tftypes.Value) *tfprotov6.DynamicValue {
@@ -195,9 +197,9 @@ var drainVals = map[string]tftypes.Value{
 	"min_matching": n(0), "max_matching": n(0), "timeout": s("10m"),
 }
 
-// Fail closed: with nothing configured, or a configuration that was unknown
-// when the provider was configured, a wait errors instead of observing
-// whatever cluster a fallback would find.
+// Fail closed: with nothing configured outside a pod, or a configuration
+// that was unknown when the provider was configured, a wait errors instead
+// of observing localhost.
 func TestInvokeWithoutCluster(t *testing.T) {
 	noEnv(t)
 	srv := protoServer(t)
