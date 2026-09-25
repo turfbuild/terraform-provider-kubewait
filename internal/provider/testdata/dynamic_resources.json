@@ -1,0 +1,42 @@
+{
+  "kubewait_condition": {
+    "attributes": {
+      "api_version":        { "type": "string", "required": true },
+      "kind":               { "type": "string", "required": true },
+      "namespace":          { "type": "string", "optional": true },
+      "name":               { "type": "string", "optional": true },
+      "label_selector":     { "type": "string", "optional": true },
+      "field_selector":     { "type": "string", "optional": true },
+      "filter":             { "type": "string", "optional": true },
+      "success_conditions": {
+        "type": "list", "optional": true,
+        "list": { "type": "object", "object": {
+          "type":   { "type": "string", "required": true },
+          "status": { "type": "string", "required": true },
+          "reason": { "type": "string", "optional": true }
+        } }
+      },
+      "failure_conditions": {
+        "type": "list", "optional": true,
+        "list": { "type": "object", "object": {
+          "type":   { "type": "string", "required": true },
+          "status": { "type": "string", "required": true },
+          "reason": { "type": "string", "optional": true }
+        } }
+      },
+      "expression":         { "type": "string", "optional": true },
+      "failure_expression": { "type": "string", "optional": true },
+      "set_expression":     { "type": "string", "optional": true },
+      "min_matching":       { "type": "number", "optional": true },
+      "max_matching":       { "type": "number", "optional": true },
+      "require_all":        { "type": "boolean", "optional": true },
+      "absent":             { "type": "string", "optional": true },
+      "timeout":            { "type": "string", "required": true },
+      "settle":             { "type": "string", "optional": true },
+      "poll_interval":      { "type": "string", "optional": true },
+      "watch":              { "type": "boolean", "optional": true },
+      "progress_fields":    { "type": "list", "optional": true, "list": { "type": "string" } },
+      "progress_interval":  { "type": "string", "optional": true }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# The binary from `make build`.
+/terraform-provider-kubewait
+# The filesystem mirror and CLI configuration from `make mirror`.
+/.mirror/
+/dev.tfrc
