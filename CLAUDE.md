@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Terraform provider (plugin framework, protocol 6) with one action,
 `kubewait_condition`, and no resources or data sources. The action waits
 until Kubernetes objects reach a state. It only reads (get, list, watch). The
-README is the user-facing spec, and its "Further behaviour" section must stay
-in sync with the code.
+README is the user-facing spec. Its "How a wait works" section must stay in
+sync with the code, and its Examples must still validate and behave as
+described.
 
 ## Commands
 
