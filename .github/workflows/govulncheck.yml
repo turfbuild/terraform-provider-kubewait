@@ -18,8 +18,8 @@ defaults:
     shell: bash
 
 jobs:
-  # The source, with the Go the release is built with (go.mod's toolchain):
-  # govulncheck judges standard-library findings by the go on PATH.
+  # The source, with the Go the release is built with (go.mod's toolchain
+  # line): govulncheck judges standard-library findings by the go on PATH.
   source:
     runs-on: ubuntu-latest
     permissions:
@@ -29,17 +29,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Install with the latest Go, so a govulncheck that needs a newer Go than
-      # go.mod still installs; then scan with go.mod's.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: stable
-          cache: false
-      # renovate: datasource=go depName=golang.org/x/vuln
-      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      # One setup-go only: it exports GOTOOLCHAIN=local, and a second setup-go
+      # then reads go.mod's go line (1.26.0) instead of its toolchain line.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # renovate: datasource=go depName=golang.org/x/vuln
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - run: go version
       # SARIF output always exits 0; the text run below is the gate.
       - run: govulncheck -format sarif ./... > govulncheck.sarif
       - if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
