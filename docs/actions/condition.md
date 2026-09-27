@@ -1,0 +1,187 @@
+---
+page_title: "kubewait_condition Action - kubewait"
+subcategory: ""
+description: |-
+  Waits until Kubernetes objects reach a state: a single object's conditions, or a count, set predicate or drain over a selected set. Read-only: it never creates, patches or deletes. The wait ends at the first success or failure that holds for settle, or fails at timeout. Failure wins ties. API errors are retried until timeout; 403 fails at once, and 401 after one immediate retry.
+---
+
+# kubewait_condition (Action)
+
+Waits until Kubernetes objects reach a state: a single object's conditions, or a count, set predicate or drain over a selected set. Read-only: it never creates, patches or deletes. The wait ends at the first success or failure that holds for settle, or fails at timeout. Failure wins ties. API errors are retried until timeout; 403 fails at once, and 401 after one immediate retry.
+
+Requires Terraform 1.16.0 or later.
+
+## Example Usage
+
+| Event | The wait holds |
+| --- | --- |
+| `after_create`, `after_update` | the resource's dependents |
+| `before_destroy` | the resource's destroy |
+| `after_destroy` | whatever the resource depends on |
+
+A failed wait halts the apply. `on_failure = continue` turns the failure into a
+warning, and `on_failure = taint` also marks the resource for replacement. To
+run a wait by itself, use
+`terraform apply -invoke=action.kubewait_condition.<name>`.
+
+### A Job completes
+
+Anything that depends on `kubernetes_manifest.migrate` waits for the Job to
+finish. Retries count as pending, because the Job controller sets `Failed` only
+once `backoffLimit` is spent.
+
+```terraform
+resource "kubernetes_manifest" "migrate" {
+  manifest = yamldecode(file("${path.module}/migrate-job.yaml"))
+  lifecycle {
+    action_trigger {
+      events     = [after_create]
+      actions    = [action.kubewait_condition.migrate_done]
+      on_failure = taint
+    }
+  }
+}
+
+action "kubewait_condition" "migrate_done" {
+  config {
+    api_version        = "batch/v1"
+    kind               = "Job"
+    namespace          = "app"
+    name               = "migrate"
+    success_conditions = [{ type = "Complete", status = "True" }]
+    failure_conditions = [{ type = "Failed", status = "True" }]
+    absent             = "failure"
+    timeout            = "15m"
+    progress_fields    = ["status.active", "status.succeeded", "status.failed"]
+  }
+}
+```
+
+### A Deployment finishes rolling out
+
+The rollout is done when every replica of the latest spec is updated and
+available. A rollout that stops progressing for `progressDeadlineSeconds` fails
+the wait. Trigger it on `after_create` and `after_update` of whatever changes
+the Deployment.
+
+```terraform
+action "kubewait_condition" "api_rolled_out" {
+  config {
+    api_version = "apps/v1"
+    kind        = "Deployment"
+    namespace   = "app"
+    name        = "api"
+    expression  = <<-EOT
+      has(object.status.observedGeneration) &&
+      object.status.observedGeneration >= object.metadata.generation &&
+      has(object.status.updatedReplicas) && object.status.updatedReplicas == object.spec.replicas &&
+      has(object.status.availableReplicas) && object.status.availableReplicas == object.spec.replicas &&
+      object.status.replicas == object.spec.replicas
+    EOT
+    failure_conditions = [
+      { type = "Progressing", status = "False", reason = "ProgressDeadlineExceeded" },
+    ]
+    timeout         = "15m"
+    progress_fields = ["status.updatedReplicas", "status.availableReplicas", "status.conditions"]
+  }
+}
+```
+
+### No load balancers left before the cluster goes
+
+A Service of type LoadBalancer keeps a finalizer until its cloud load balancer
+is deleted. The `terraform_data` barrier is destroyed after the in-cluster
+resources and before the cluster, and its `before_destroy` wait holds the
+teardown until no LoadBalancer Service is left. Terraform must know a
+destroy-event action's `config` when it plans the destroy, so write it with
+literals.
+
+```terraform
+resource "terraform_data" "cluster_contents" {
+  triggers_replace = module.eks_cluster.endpoint
+  depends_on       = [module.eks_nodes]
+  lifecycle {
+    action_trigger {
+      events  = [before_destroy]
+      actions = [action.kubewait_condition.no_load_balancers]
+    }
+  }
+}
+
+resource "helm_release" "gateway" {
+  # ...
+  depends_on = [terraform_data.cluster_contents]
+}
+
+action "kubewait_condition" "no_load_balancers" {
+  config {
+    api_version     = "v1"
+    kind            = "Service"
+    filter          = "object.spec.type == 'LoadBalancer'"
+    min_matching    = 0
+    max_matching    = 0
+    timeout         = "10m"
+    progress_fields = ["metadata.namespace", "metadata.name"]
+  }
+}
+```
+
+More examples, and how a wait reaches its verdict (modes, settle, timeouts,
+error handling and progress), are in the
+[README](https://github.com/turfbuild/terraform-provider-kubewait/blob/main/README.md#how-a-wait-works).
+
+<!-- action schema generated by tfplugindocs -->
+## Schema
+
+### Required
+
+- `api_version` (String) Group/version of the kind to observe, such as v1 or nvcre.nvidia.com/v1alpha1.
+- `kind` (String) The kind to observe, such as Node, Certification or TrainJob.
+- `timeout` (String) How long to wait, such as 30m. Expiry is a failure; nothing waits forever.
+
+### Optional
+
+- `absent` (String) Single-object mode: what a missing object counts as, pending, success or failure. Default: pending.
+- `expression` (String) CEL over `object`, ANDed with success_conditions.
+- `failure_conditions` (Attributes List) Conditions any one of which, holding on any matched object, is a failure. Default: none. (see [below for nested schema](#nestedatt--failure_conditions))
+- `failure_expression` (String) CEL over `object`, ORed with failure_conditions.
+- `field_selector` (String) Server-side field selection (set mode).
+- `filter` (String) CEL over `object`: client-side narrowing of the selected set (set mode).
+- `label_selector` (String) Server-side label selection (set mode).
+- `max_matching` (Number) Maximum number of passing objects (set mode). Default: unbounded. max_matching = 0 (with min_matching = 0) and no success predicate is a drain: it succeeds when nothing matches.
+- `min_matching` (Number) Minimum number of passing objects (set mode). Default: 1.
+- `name` (String) Set for single-object mode: the wait observes this object. Unset: set mode.
+- `namespace` (String) The namespace. Omit it for cluster-scoped kinds. For a namespaced kind in set mode, omitting it selects all namespaces; single-object mode requires it for namespaced kinds.
+- `poll_interval` (String) Resync interval: a full re-list, and the only observation when watch is false. Default: 10s.
+- `progress_fields` (List of String) Field paths reported for each observed object in progress events, such as status.conditions or metadata.labels["app.kubernetes.io/name"]. Default: none.
+- `progress_interval` (String) Heartbeat interval between progress events when the verdict does not change. Default: 60s.
+- `require_all` (Boolean) Every matched object must pass, not just min_matching of them (set mode). Default: false.
+- `set_expression` (String) CEL over `objects` (the matched set): a predicate on the whole set (set mode).
+- `settle` (String) How long a verdict must hold continuously before it counts. Any change resets it. Must be shorter than timeout. Default: 0s.
+- `success_conditions` (Attributes List) Conditions that must all hold on an object for it to pass. Default: none. (see [below for nested schema](#nestedatt--success_conditions))
+- `watch` (Boolean) Watch between resyncs. Default: true.
+
+<a id="nestedatt--failure_conditions"></a>
+### Nested Schema for `failure_conditions`
+
+Required:
+
+- `status` (String) The status to match, exactly: True, False or Unknown.
+- `type` (String) The condition type, such as Ready or Succeeded.
+
+Optional:
+
+- `reason` (String) When set, the reason must match too.
+
+
+<a id="nestedatt--success_conditions"></a>
+### Nested Schema for `success_conditions`
+
+Required:
+
+- `status` (String) The status to match, exactly: True, False or Unknown.
+- `type` (String) The condition type, such as Ready or Succeeded.
+
+Optional:
+
+- `reason` (String) When set, the reason must match too.

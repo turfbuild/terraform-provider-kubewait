@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '41 4 * * *' # nightly, for the in-cluster suite
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash # -eo pipefail
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make lint
+      - run: go mod tidy -diff
+      - run: go mod verify
+
+  unit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make test
+
+  # A suite counts only if its -v output has no SKIP lines.
+  integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/kubebuilder-envtest
+          key: envtest-${{ runner.os }}-${{ hashFiles('GNUmakefile') }}
+      - run: make testint 2>&1 | tee testint.log
+      - name: No skipped tests
+        run: |
+          if grep -- '--- SKIP' testint.log; then
+            echo '::error::integration tests skipped, so the run does not count'
+            exit 1
+          fi
+
+  acceptance:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform: ['1.16.*', latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/kubebuilder-envtest
+          key: envtest-${{ runner.os }}-${{ hashFiles('GNUmakefile') }}
+      - run: make testacc 2>&1 | tee testacc.log
+      - name: No skipped tests
+        run: |
+          if grep -- '--- SKIP' testacc.log; then
+            echo '::error::acceptance tests skipped, so the run does not count'
+            exit 1
+          fi
+
+  # docs/ is generated, and make docs formats examples/; a schema, template or
+  # example change must be regenerated and committed.
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+      - run: make docs
+      - name: docs/ is up to date
+        run: |
+          if [ -n "$(git status --porcelain -- docs examples)" ]; then
+            git status --porcelain -- docs examples
+            git diff -- docs examples
+            echo '::error::docs/ is stale; run make docs and commit the result'
+            exit 1
+          fi
+
+  # The release packaging, unsigned and unpublished.
+  release-dry-run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          # renovate: datasource=github-releases depName=anchore/syft
+          syft-version: v1.52.0
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          # renovate: datasource=github-releases depName=goreleaser/goreleaser
+          version: v2.18.2
+          args: release --snapshot --clean --skip=sign,publish
+      # The manifest is copied into the release only when it is published, but
+      # SHA256SUMS already lists it.
+      - run: |
+          ls -l dist/*.zip dist/*.spdx.json
+          cat dist/*_SHA256SUMS
+          test "$(ls dist/*.zip | wc -l)" -eq 6
+          grep -q '_manifest.json$' dist/*_SHA256SUMS
+          ! grep -q '\.spdx\.json$' dist/*_SHA256SUMS
+
+  # TestInvokeInCluster in a pod on a throwaway kind cluster; the script fails
+  # on a SKIP itself.
+  incluster:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # renovate: datasource=go depName=sigs.k8s.io/kind
+      - run: go install sigs.k8s.io/kind@v0.32.0
+      - run: make testincluster

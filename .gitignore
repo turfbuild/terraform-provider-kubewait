@@ -5,3 +5,5 @@
 /dev.tfrc
 # The test binary, image context and kubeconfig from `make testincluster`.
 /.incluster/
+# goreleaser output.
+/dist/

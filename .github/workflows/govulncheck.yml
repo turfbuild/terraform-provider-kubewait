@@ -1,0 +1,76 @@
+name: govulncheck
+
+# The vulnerability database changes without the code changing, so this also
+# runs daily. A failed scheduled run notifies whoever last changed the cron.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # The source, with the Go the release is built with (go.mod's toolchain):
+  # govulncheck judges standard-library findings by the go on PATH.
+  source:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Install with the latest Go, so a govulncheck that needs a newer Go than
+      # go.mod still installs; then scan with go.mod's.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      # renovate: datasource=go depName=golang.org/x/vuln
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # SARIF output always exits 0; the text run below is the gate.
+      - run: govulncheck -format sarif ./... > govulncheck.sarif
+      - if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: govulncheck.sarif
+          category: govulncheck
+      - run: govulncheck ./...
+
+  # The latest published release's binary, which carries the Go version and
+  # modules it was built with. A finding here means the release needs a
+  # rebuild, even when main is already fixed.
+  release:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      # renovate: datasource=go depName=golang.org/x/vuln
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName); then
+            echo 'No published release yet.'
+            exit 0
+          fi
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*_linux_amd64.zip' --dir release
+          unzip -o release/*_linux_amd64.zip -d release
+          govulncheck -mode=binary release/terraform-provider-kubewait_v*

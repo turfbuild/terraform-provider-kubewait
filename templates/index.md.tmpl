@@ -1,0 +1,54 @@
+---
+page_title: "{{.ProviderShortName}} Provider"
+description: |-
+  A provider with one action, kubewait_condition, that waits until Kubernetes objects reach a state.
+---
+
+# {{.ProviderShortName}} Provider
+
+A provider with one action, `kubewait_condition`. It waits until Kubernetes
+objects reach a state:
+- one object's conditions or fields;
+- a count or predicate over a set of objects;
+- a drain, where nothing is left.
+
+Attach it to a resource's lifecycle events to hold the resource's dependents
+until the wait succeeds, to gate a teardown, or to confirm one. The action only
+reads (get, list, watch). It never creates, patches or deletes.
+
+## Requirements
+
+- Terraform 1.16.0 or later: destroy-event triggers and `on_failure` first
+  appear there.
+- OpenTofu does not support actions yet
+  ([opentofu/opentofu#3309](https://github.com/opentofu/opentofu/issues/3309)).
+  OpenTofu 1.12 installs the provider, but rejects `action` blocks.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+The provider takes the kubernetes provider's connection attributes and `KUBE_*`
+environment variables, and resolves them the same way. A `provider
+"kubernetes"` block's connection settings copy over verbatim. With nothing
+configured, a wait uses in-cluster credentials when it runs in a pod, as that
+provider does, and otherwise fails. It never falls back to localhost.
+
+From a pod, an empty configuration observes the pod's own cluster. A drain of a
+kind or namespace that cluster lacks passes at once, so configure destroy-event
+drains explicitly.
+
+## Verifying a release
+
+Terraform and OpenTofu check each release's GPG signature when they install it.
+Each release also carries build provenance, which the GitHub CLI verifies
+against the workflow that built it:
+
+```sh
+gh attestation verify terraform-provider-kubewait_<version>_<os>_<arch>.zip \
+  --repo turfbuild/terraform-provider-kubewait
+```
+
+Every zip has an SPDX SBOM, `<zip>.spdx.json`, with its own attestation.
+
+{{ .SchemaMarkdown | trimspace }}

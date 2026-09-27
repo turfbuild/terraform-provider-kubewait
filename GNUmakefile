@@ -1,7 +1,9 @@
 VERSION             ?= 0.1.0
 ENVTEST_K8S_VERSION ?= 1.37.0
 SETUP_ENVTEST       ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.25
-OS_ARCH             := $(shell go env GOOS)_$(shell go env GOARCH)
+# renovate: datasource=go depName=github.com/hashicorp/terraform-plugin-docs
+TFPLUGINDOCS        ?= go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0
+OS_ARCH            := $(shell go env GOOS)_$(shell go env GOARCH)
 MIRROR              := $(CURDIR)/.mirror
 PLUGIN_DIR          := $(MIRROR)/registry.terraform.io/turfbuild/kubewait/$(VERSION)/$(OS_ARCH)
 
@@ -66,6 +68,15 @@ mirror:
 	@echo "wrote dev.tfrc; export TF_CLI_CONFIG_FILE=$(CURDIR)/dev.tfrc"
 	@echo "after a rebuild, in each configuration that uses it:"
 	@echo "  terraform providers lock -fs-mirror=$(MIRROR) -platform=$(OS_ARCH) registry.terraform.io/turfbuild/kubewait"
+
+# Registry docs: docs/ from templates/, examples/ and the schema descriptions.
+# Needs terraform >= 1.14 on PATH, for the action schema. CI fails if docs/ is
+# stale.
+.PHONY: docs
+docs:
+	terraform fmt -recursive examples
+	$(TFPLUGINDOCS) generate --provider-name kubewait
+	$(TFPLUGINDOCS) validate --provider-name kubewait
 
 .PHONY: fmt
 fmt:

@@ -7,7 +7,9 @@ A Terraform provider (plugin framework, protocol 6) with one action,
 until Kubernetes objects reach a state. It only reads (get, list, watch). The
 README is the user-facing spec. Its "How a wait works" section must stay in
 sync with the code, and its Examples must still validate and behave as
-described.
+described. The registry docs in `docs/` are generated (`make docs`) from
+`templates/`, `examples/` and the schema descriptions; the action page links
+to the README's "How a wait works" rather than repeating it.
 
 ## Commands
 
@@ -19,8 +21,18 @@ make fmt
 make testint  # envtest: real kube-apiserver + etcd 1.37.0 (downloaded on first use), ~1 min
 make testacc  # TF_ACC=1, the terraform on PATH (>= 1.16.0), envtest, ~1 min
 make testincluster  # TestInvokeInCluster in a pod on a throwaway kind cluster (docker, kind), ~2 min
+make docs     # regenerate docs/ with tfplugindocs; needs terraform >= 1.14 on PATH
 make mirror   # local install into .mirror/ plus dev.tfrc; see the README
 ```
+
+Workflows:
+- `ci.yml`: lint, unit, integration, acceptance (Terraform `1.16.*` and
+  latest), a stale-docs check, and an unsigned goreleaser dry run.
+  `testincluster` runs nightly and on demand.
+- `govulncheck.yml`: the source, with go.mod's toolchain, and the latest
+  release's binary. Runs on push, on PRs, and daily.
+- `release.yml`: a `v*` tag builds a signed, attested draft release.
+  `RELEASING.md` is the checklist.
 
 A single test:
 
@@ -104,6 +116,17 @@ as a user bound to get/list/watch only, so any mutation would fail.
   - Destroy-event action configs must be literals.
   - In `terraform destroy`, Terraform turns a failed action into a warning
     whatever `on_failure` says. The tests pin this as measured on 1.16.2.
+- **Releases.**
+  - go.mod's `toolchain` line is the Go that builds releases; the `go` line
+    is the minimum. Renovate bumps `toolchain`.
+  - The release assets follow the registries' contract (`.goreleaser.yml`).
+    SBOMs stay out of SHA256SUMS. A published version is never replaced.
+  - Workflows pin every action to a full commit SHA with a `# vX.Y.Z`
+    comment. `permissions: {}` sits at the top, with grants per job. A tool
+    version pinned in a workflow or the makefile carries a `# renovate:`
+    comment.
+  - `docs/` is generated: edit `templates/`, `examples/` or the schema
+    descriptions, then run `make docs`.
 - The CEL module path is `cel.dev/cel-go`, not `github.com/google/cel-go`.
 - This repo is public and standalone. Code, comments and docs describe
   behaviour. They name no downstream consumer, internal project or ticket id.

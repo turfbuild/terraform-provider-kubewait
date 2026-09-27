@@ -1,0 +1,67 @@
+# Release packaging for the Terraform and OpenTofu registries, adapted from
+# hashicorp/terraform-provider-scaffolding-framework. Both registries read the
+# same GitHub release: one zip per platform, the manifest, SHA256SUMS and its
+# binary GPG signature. See RELEASING.md.
+version: 2
+
+# No `go mod tidy` hook: the release builds exactly the tagged source, and CI
+# checks that it is tidy.
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    ldflags:
+      - '-s -w -X main.version={{ .Version }}'
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    binary: '{{ .ProjectName }}_v{{ .Version }}'
+
+archives:
+  - id: zips
+    formats: [zip]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+
+# One SPDX document per zip, from the binary inside it: its modules and the Go
+# version that built it.
+sboms:
+  - artifacts: archive
+    ids: [zips]
+    documents:
+      - '{{ .ArtifactName }}.spdx.json'
+
+# Only the zips and the manifest are summed. Every line of a signed SHA256SUMS
+# lands in users' lock files, so the SBOMs stay out; the release workflow
+# attests them instead.
+checksum:
+  ids: [zips]
+  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  algorithm: sha256
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
+
+# The registries want a binary (not ASCII-armored) detached signature.
+signs:
+  - artifacts: checksum
+    args:
+      - --batch
+      - --local-user
+      - '{{ .Env.GPG_FINGERPRINT }}'
+      - --output
+      - '${signature}'
+      - --detach-sign
+      - '${artifact}'
+
+# A draft: a maintainer verifies it and publishes it. Publishing is what the
+# registries see, and a published version is never replaced.
+release:
+  draft: true
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
+
+changelog:
+  use: git
