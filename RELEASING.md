@@ -12,7 +12,9 @@ of it ends up in users' lock files.
 
 ## Setup, once
 
-- **Signing key.** An RSA key; the Terraform registry rejects ECC keys. The
+- **Signing key.** "turfbuild release signing <security@turf.build>", RSA
+  4096, fingerprint `0A5B 3535 5F7C 6D01 286B  9E11 C319 99AE 1374 A19C`, no
+  expiry. It has to be RSA: the Terraform registry rejects ECC keys. The
   private key and its passphrase are the `GPG_PRIVATE_KEY` and `PASSPHRASE`
   secrets of the `release` environment, which admits only `v*` tags. The
   ASCII-armored public key is registered with both registries.

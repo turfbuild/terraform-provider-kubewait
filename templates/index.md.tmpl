@@ -41,8 +41,11 @@ drains explicitly.
 ## Verifying a release
 
 Terraform and OpenTofu check each release's GPG signature when they install it.
-Each release also carries build provenance, which the GitHub CLI verifies
-against the workflow that built it:
+Releases are signed with the RSA key "turfbuild release signing
+<security@turf.build>", fingerprint
+`0A5B 3535 5F7C 6D01 286B  9E11 C319 99AE 1374 A19C`. Each release also
+carries build provenance, which the GitHub CLI verifies against the workflow
+that built it:
 
 ```sh
 gh attestation verify terraform-provider-kubewait_<version>_<os>_<arch>.zip \
