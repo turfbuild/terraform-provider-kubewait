@@ -1,4 +1,6 @@
-VERSION             ?= 0.1.0
+# The next unreleased version, so a local build never carries a published
+# version number. RELEASING.md bumps it after each release.
+VERSION             ?= 0.1.1
 ENVTEST_K8S_VERSION ?= 1.37.0
 SETUP_ENVTEST       ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.25
 # renovate: datasource=go depName=github.com/hashicorp/terraform-plugin-docs

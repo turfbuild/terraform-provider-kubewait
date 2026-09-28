@@ -383,7 +383,7 @@ make testint       # envtest (downloads kube-apiserver and etcd 1.37.0 on first 
 make testacc       # Terraform acceptance: TF_ACC=1, the terraform on PATH (>= 1.16.0), envtest
 make testincluster # in a pod on a throwaway kind cluster (docker, kind)
 make docs          # regenerates docs/; the terraform on PATH must be >= 1.14
-make mirror        # installs 0.1.0 into .mirror/ and writes dev.tfrc
+make mirror        # installs the next unreleased version into .mirror/ and writes dev.tfrc
 ```
 
 Releases are cut from a tag; see [RELEASING.md](RELEASING.md).
@@ -399,9 +399,12 @@ export TF_CLI_CONFIG_FILE=$PWD/dev.tfrc
 cd /path/to/configuration && terraform init
 ```
 
-A rebuilt 0.1.0 has a new checksum, and `init` rejects it even with
-`-upgrade`. After each rebuild, run the `terraform providers lock` command
-that `make mirror` prints in the configuration, then `init` again.
+`make mirror` builds the next unreleased version (`VERSION` in the
+makefile), so a configuration's `version` constraint must admit it, such as
+`~> 0.1`. A rebuild of the same version has a new checksum, and `init`
+rejects it even with `-upgrade`. After each rebuild, run the
+`terraform providers lock` command that `make mirror` prints in the
+configuration, then `init` again.
 
 ## License
 
