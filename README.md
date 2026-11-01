@@ -406,6 +406,12 @@ rejects it even with `-upgrade`. After each rebuild, run the
 `terraform providers lock` command that `make mirror` prints in the
 configuration, then `init` again.
 
+## Community
+
+Questions and ideas: https://turf.build/discord/. A bug in the provider is an
+issue here. Release notes by email: https://turf.build/newsletter/. Everything
+else: https://turf.build/community/.
+
 ## License
 
 MPL-2.0.
